@@ -1,0 +1,6 @@
+{
+  "name": "SMM PANEL Telegram Bot",
+  "description": "Production-ready Telegram SMM Panel Bot with services catalog, orders, deposits, referrals, gift codes, and full admin management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
