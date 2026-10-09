@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: supreme-smm-panel-bot
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 22.14.0
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_TELEGRAM_ID
+        sync: false
+      - key: SUPPORT_USERNAME
+        value: SUPREMEXAURA01

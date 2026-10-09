@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+import http from 'http';
 import { Bot, session } from 'grammy';
 import { CONFIG } from './config.js';
 import { 
@@ -98,6 +99,32 @@ async function main() {
 
   // Initialize SQLite Database
   await initDatabase();
+
+  // Start lightweight health check HTTP server for Render Web Services / Uptime monitoring
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: 'online',
+      service: CONFIG.BOT_NAME,
+      brand: CONFIG.BRAND_NAME,
+      botConfigured: Boolean(CONFIG.BOT_TOKEN),
+      timestamp: new Date().toISOString()
+    }));
+  });
+
+  const port = process.env.PORT || 3000;
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      logger.info(`Port ${port} already in use; Telegram bot continues long polling smoothly.`);
+    } else {
+      logger.warn('Health check server notice:', err.message || err);
+    }
+  });
+
+  server.listen(port, () => {
+    logger.info(`🌐 Health check HTTP server listening on port ${port}`);
+  });
 
   if (!CONFIG.BOT_TOKEN) {
     logger.warn('⚠️  BOT_TOKEN is not defined in environment variables!');
