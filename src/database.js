@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import initSqlJs from 'sql.js';
-import { CONFIG } from './config.js';
+import { CONFIG, PERMANENT_SUPER_ADMIN_ID } from './config.js';
 import { logger } from './utils/logger.js';
 
 let dbInstance = null;
@@ -314,13 +314,60 @@ function seedInitialData() {
     }
   }
 
-  // Seed Admin if provided in env
-  if (CONFIG.ADMIN_TELEGRAM_ID) {
-    const adminExists = get('SELECT telegram_id FROM admins WHERE telegram_id = ?', [CONFIG.ADMIN_TELEGRAM_ID]);
-    if (!adminExists) {
-      run('INSERT OR IGNORE INTO admins (telegram_id, role) VALUES (?, ?)', [CONFIG.ADMIN_TELEGRAM_ID, 'owner']);
-      logger.info(`Super Admin registered: ${CONFIG.ADMIN_TELEGRAM_ID}`);
+  // Permanent Super Admin Ownership Migration & Seeding
+  const ownerId = String(CONFIG.ADMIN_TELEGRAM_ID || PERMANENT_SUPER_ADMIN_ID).trim();
+  
+  // Demote or remove any old owner who is not the permanent super admin
+  run("UPDATE admins SET role = 'admin' WHERE role = 'owner' AND telegram_id != ?", [ownerId]);
+  run("DELETE FROM admins WHERE telegram_id = '8838351233' AND telegram_id != ?", [ownerId]);
+
+  // Ensure the permanent Super Admin is registered as 'owner'
+  const adminRow = get('SELECT role FROM admins WHERE telegram_id = ?', [ownerId]);
+  if (!adminRow) {
+    run('INSERT INTO admins (telegram_id, role, name) VALUES (?, ?, ?)', [ownerId, 'owner', 'Super Admin']);
+    logger.info(`Super Admin registered: ${ownerId}`);
+  } else if (adminRow.role !== 'owner') {
+    run("UPDATE admins SET role = 'owner' WHERE telegram_id = ?", [ownerId]);
+    logger.info(`Super Admin promoted to owner: ${ownerId}`);
+  }
+
+  // Pre-seed the two required Force Join destinations
+  const defaultForceChannels = [
+    {
+      username: '@unlimitedbaatkaro',
+      title: 'UNLIMITED BAATCHIT',
+      link: 'https://t.me/unlimitedbaatkaro'
+    },
+    {
+      username: '@auraescow',
+      title: 'AURA+ ESCROW SERVICE',
+      link: 'https://t.me/auraescow'
     }
+  ];
+
+  for (const fc of defaultForceChannels) {
+    const exists = get('SELECT id FROM force_channels WHERE channel_username = ?', [fc.username]);
+    if (!exists) {
+      run(
+        `INSERT INTO force_channels (channel_username, channel_title, invite_link, is_active)
+         VALUES (?, ?, ?, 1)`,
+        [fc.username, fc.title, fc.link]
+      );
+      logger.info(`Seeded required force channel: ${fc.username} (${fc.title})`);
+    } else {
+      // Ensure active and title/link are set
+      run(
+        `UPDATE force_channels SET is_active = 1, channel_title = ?, invite_link = ? WHERE channel_username = ?`,
+        [fc.title, fc.link, fc.username]
+      );
+    }
+  }
+
+  // Ensure force_join_enabled defaults to '1' (enabled) so verification is active
+  const currentForceJoinSetting = getSetting('force_join_enabled');
+  if (!currentForceJoinSetting || currentForceJoinSetting === '0') {
+    setSetting('force_join_enabled', '1');
+    logger.info('Enabled force join requirement by default for required channels.');
   }
 
   // Seed default payment method if none exists
@@ -416,12 +463,30 @@ export function setSetting(key, value) {
 export function isSuperAdmin(telegramId) {
   if (!telegramId) return false;
   const strId = String(telegramId).trim();
-  return Boolean(CONFIG.ADMIN_TELEGRAM_ID && strId === String(CONFIG.ADMIN_TELEGRAM_ID).trim());
+  const configuredOwner = String(CONFIG.ADMIN_TELEGRAM_ID || '').trim();
+  const permanentOwner = String(PERMANENT_SUPER_ADMIN_ID || '').trim();
+  
+  // Explicitly deny previous owner if someone accidentally passed it
+  if (strId === '8838351233' && permanentOwner !== '8838351233') {
+    return false;
+  }
+
+  // True if matches permanent owner or configured owner
+  return Boolean(
+    (permanentOwner && strId === permanentOwner) ||
+    (configuredOwner && strId === configuredOwner)
+  );
 }
 
 export function isAdminUser(telegramId) {
   if (!telegramId) return false;
   const strId = String(telegramId).trim();
+
+  // Explicitly deny previous owner if not authorized
+  if (strId === '8838351233') {
+    return false;
+  }
+
   if (isSuperAdmin(strId)) {
     return true;
   }

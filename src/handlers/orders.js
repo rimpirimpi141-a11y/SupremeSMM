@@ -3,7 +3,7 @@ import { getOrderConfirmKeyboard, getDepositPromptKeyboard } from '../keyboards.
 import { calculatePrice, formatCurrency, formatNumber } from '../utils/pricing.js';
 import { deductBalance, generateOrderCode, getUserBalance } from '../utils/transactions.js';
 import { logger } from '../utils/logger.js';
-import { CONFIG } from '../config.js';
+import { CONFIG, PERMANENT_SUPER_ADMIN_ID } from '../config.js';
 
 // In-memory order drafts for confirmation steps
 const activeDrafts = new Map();
@@ -205,10 +205,11 @@ _Our system is processing your order. You can track status anytime under 👤 Pr
   await ctx.answerCallbackQuery({ text: 'Order placed successfully!' });
 
   // Notify admin
-  if (CONFIG.ADMIN_TELEGRAM_ID) {
+  const targetAdminId = String(CONFIG.ADMIN_TELEGRAM_ID || PERMANENT_SUPER_ADMIN_ID).trim();
+  if (targetAdminId) {
     try {
       await ctx.api.sendMessage(
-        CONFIG.ADMIN_TELEGRAM_ID,
+        targetAdminId,
         `🔔 *NEW ORDER RECEIVED!*\n\n` +
         `🆔 *Order Code:* \`${orderCode}\`\n` +
         `👤 *User:* \`${telegramId}\` (@${ctx.from.username || 'N/A'})\n` +

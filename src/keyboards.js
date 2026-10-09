@@ -149,7 +149,7 @@ export function getForceJoinInlineKeyboard(channels) {
     const url = ch.invite_link || `https://t.me/${username}`;
     kb.url(`📢 Join ${title}`, url).row();
   }
-  kb.text('✅ Check Join', 'check_force_join');
+  kb.text('✅ Joined — Verify', 'check_force_join');
   return kb;
 }
 

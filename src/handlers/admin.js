@@ -26,7 +26,7 @@ import {
 import { formatCurrency, formatNumber } from '../utils/pricing.js';
 import { creditBalance, deductBalance } from '../utils/transactions.js';
 import { logger } from '../utils/logger.js';
-import { CONFIG } from '../config.js';
+import { CONFIG, PERMANENT_SUPER_ADMIN_ID } from '../config.js';
 
 /* ==========================================================================
    ADMIN ROOT DASHBOARD
@@ -163,17 +163,19 @@ export async function showAdminManageAdminsMenu(ctx) {
   ctx.session.adminStep = null;
   ctx.session.adminData = {};
 
+  const superAdminId = String(CONFIG.ADMIN_TELEGRAM_ID || PERMANENT_SUPER_ADMIN_ID).trim();
   const admins = query('SELECT * FROM admins ORDER BY added_at ASC');
 
   let text = 
 `👑 *Manage Administrators*
 
-🌟 *Super Admin ID:* \`${CONFIG.ADMIN_TELEGRAM_ID}\`
-🛡️ *Regular Admins:* ${admins.length}\n\n`;
+🌟 *Super Admin ID:* \`${superAdminId}\`
+🛡️ *Regular Admins:* ${admins.filter(a => String(a.telegram_id).trim() !== superAdminId).length}\n\n`;
 
   for (const a of admins) {
-    const roleIcon = a.role === 'owner' ? '🌟' : '🛡️';
-    text += `${roleIcon} \`${a.telegram_id}\` ${a.name ? `(${a.name})` : ''} ${a.username ? `[@${a.username.replace('@', '')}]` : ''}\n`;
+    const isOwner = String(a.telegram_id).trim() === superAdminId || a.role === 'owner';
+    const roleIcon = isOwner ? '🌟' : '🛡️';
+    text += `${roleIcon} \`${a.telegram_id}\` ${a.name ? `(${a.name})` : ''} ${a.username ? `[@${a.username.replace('@', '')}]` : ''} ${isOwner ? '_(Super Admin)_' : ''}\n`;
   }
 
   text += `\nSelect an option below:`;
@@ -379,8 +381,12 @@ export async function promptRemoveAdmin(ctx) {
     return;
   }
 
+  const superAdminId = String(CONFIG.ADMIN_TELEGRAM_ID || PERMANENT_SUPER_ADMIN_ID).trim();
   const admins = query('SELECT * FROM admins ORDER BY added_at ASC');
-  const removable = admins.filter(a => String(a.telegram_id).trim() !== String(CONFIG.ADMIN_TELEGRAM_ID).trim());
+  const removable = admins.filter(a => {
+    const tid = String(a.telegram_id).trim();
+    return tid !== superAdminId && tid !== String(PERMANENT_SUPER_ADMIN_ID).trim() && a.role !== 'owner';
+  });
 
   if (removable.length === 0) {
     await ctx.reply('📋 *No regular administrators to remove.*', { parse_mode: 'Markdown' });
@@ -399,13 +405,15 @@ export async function promptRemoveAdmin(ctx) {
 }
 
 export async function showAdminList(ctx) {
+  const superAdminId = String(CONFIG.ADMIN_TELEGRAM_ID || PERMANENT_SUPER_ADMIN_ID).trim();
   const admins = query('SELECT * FROM admins ORDER BY added_at ASC');
 
   let text = `📋 *Administrator Directory:*\n\n`;
-  text += `🌟 *Super Admin:* \`${CONFIG.ADMIN_TELEGRAM_ID}\` (Protected - Permanent)\n\n`;
+  text += `🌟 *Super Admin:* \`${superAdminId}\` (Protected - Permanent)\n\n`;
 
   for (const a of admins) {
-    if (String(a.telegram_id).trim() === String(CONFIG.ADMIN_TELEGRAM_ID).trim()) continue;
+    const tid = String(a.telegram_id).trim();
+    if (tid === superAdminId || tid === String(PERMANENT_SUPER_ADMIN_ID).trim() || a.role === 'owner') continue;
     text += `🛡️ *Admin ID:* \`${a.telegram_id}\`\n`;
     text += `   Name: ${a.name || 'Not specified'}\n`;
     text += `   Username: ${a.username ? `@${a.username.replace('@', '')}` : 'N/A'}\n`;

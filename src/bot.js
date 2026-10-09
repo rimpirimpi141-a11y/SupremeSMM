@@ -3,7 +3,7 @@ dotenv.config();
 
 import http from 'http';
 import { Bot, session } from 'grammy';
-import { CONFIG } from './config.js';
+import { CONFIG, PERMANENT_SUPER_ADMIN_ID } from './config.js';
 import { 
   initDatabase, 
   get, 
@@ -280,34 +280,34 @@ async function main() {
             }
           } catch (e) {
             const errMsg = String(e.message || e);
-            if (errMsg.includes('member list is inaccessible') || errMsg.includes('chat not found') || errMsg.includes('bot is not a member')) {
-              logger.warn(`⚠️ Bot lacks administrator privileges in ${ch.channel_username}. Grant bot admin rights in the channel to enforce verification.`);
-            } else {
-              missingChannels.push(ch);
-            }
+            logger.warn(`Membership check error for ${ch.channel_username} (User ${ctx.from.id}): ${errMsg}`);
+            // If user is not found or not in chat, they haven't joined
+            missingChannels.push(ch);
           }
         }
 
         if (missingChannels.length > 0) {
+          const listText = missingChannels.map(c => `• *${c.channel_title || c.channel_username}* (${c.channel_username})`).join('\n');
           const forceText = 
-`📢 *Please join our channel first!*
+`📢 *Please join our required community channels first!*
 
-To access our SMM Panel services and features, you must join our required channel(s) below.
+To access the SMM Panel services, you must join:
+${listText}
 
-Once you have joined, click the *Check Join* button to proceed:`;
+Click the join buttons below, then tap *✅ Joined — Verify*:`;
 
           if (ctx.callbackQuery) {
-            await ctx.answerCallbackQuery({ text: 'Please join our channel first to use this bot!', show_alert: true });
+            await ctx.answerCallbackQuery({ text: '⚠️ Please join all required channels first!', show_alert: true });
             try {
               await ctx.editMessageText(forceText, {
                 parse_mode: 'Markdown',
-                reply_markup: getForceJoinInlineKeyboard(missingChannels)
+                reply_markup: getForceJoinInlineKeyboard(channels)
               });
             } catch (e) {}
           } else {
             await ctx.reply(forceText, {
               parse_mode: 'Markdown',
-              reply_markup: getForceJoinInlineKeyboard(missingChannels)
+              reply_markup: getForceJoinInlineKeyboard(channels)
             });
           }
           return;
@@ -501,26 +501,48 @@ Once you have joined, click the *Check Join* button to proceed:`;
         for (const ch of channels) {
           try {
             const member = await ctx.api.getChatMember(ch.channel_username, ctx.from.id);
-            if (!['creator', 'administrator', 'member', 'restricted'].includes(member.status)) {
+            const valid = ['creator', 'administrator', 'member', 'restricted'];
+            if (!valid.includes(member.status)) {
               missing.push(ch);
             }
           } catch (e) {
             const errMsg = String(e.message || e);
-            if (!errMsg.includes('member list is inaccessible') && !errMsg.includes('chat not found') && !errMsg.includes('bot is not a member')) {
-              missing.push(ch);
-            }
+            logger.warn(`Membership check error during verify for ${ch.channel_username} (User ${ctx.from.id}): ${errMsg}`);
+            missing.push(ch);
           }
         }
 
         if (missing.length === 0) {
-          await ctx.answerCallbackQuery({ text: '✅ Verification successful! Welcome.' });
-          await ctx.reply('🎉 *Thank you for joining our channel! Access granted.*', { parse_mode: 'Markdown' });
+          await ctx.answerCallbackQuery({ text: '✅ Verification successful! Access granted.' });
+          try {
+            await ctx.deleteMessage();
+          } catch (e) {}
+          await ctx.reply('🎉 *Thank you for joining our community! Access granted.*', { parse_mode: 'Markdown' });
           return handleStart(ctx);
         } else {
-          return ctx.answerCallbackQuery({
-            text: '⚠️ You have not joined all required channels yet! Please join and click Check Join again.',
+          const missingNames = missing.map(c => c.channel_title || c.channel_username).join(', ');
+          await ctx.answerCallbackQuery({
+            text: `⚠️ You still need to join:\n${missingNames}`,
             show_alert: true
           });
+
+          // Refresh the join prompt message with remaining missing channels
+          const listText = missing.map(c => `• *${c.channel_title || c.channel_username}* (${c.channel_username})`).join('\n');
+          const forceText = 
+`📢 *Membership Verification Incomplete*
+
+You still have not joined the following required channel(s):
+${listText}
+
+Please join and click *✅ Joined — Verify* below:`;
+
+          try {
+            await ctx.editMessageText(forceText, {
+              parse_mode: 'Markdown',
+              reply_markup: getForceJoinInlineKeyboard(channels)
+            });
+          } catch (e) {}
+          return;
         }
       }
 
@@ -589,11 +611,16 @@ Once you have joined, click the *Check Join* button to proceed:`;
           return listForceChannels(ctx);
         }
 
-        // Admin removal
+        // Admin removal (Only Super Admin can remove)
         if (data.startsWith('adm_admin_del_')) {
+          if (!isSuperAdmin(ctx.from.id)) {
+            await ctx.answerCallbackQuery({ text: 'Only Super Admin can remove administrators!', show_alert: true });
+            return;
+          }
           const targetTid = data.replace('adm_admin_del_', '').trim();
-          if (String(targetTid) === String(CONFIG.ADMIN_TELEGRAM_ID).trim()) {
-            await ctx.answerCallbackQuery({ text: 'Super Admin cannot be removed!' });
+          const superAdminId = String(CONFIG.ADMIN_TELEGRAM_ID || PERMANENT_SUPER_ADMIN_ID).trim();
+          if (String(targetTid) === superAdminId || String(targetTid) === String(PERMANENT_SUPER_ADMIN_ID).trim()) {
+            await ctx.answerCallbackQuery({ text: 'Super Admin cannot be removed!', show_alert: true });
             return;
           }
           run('DELETE FROM admins WHERE telegram_id = ?', [targetTid]);

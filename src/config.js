@@ -1,9 +1,15 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+export const PERMANENT_SUPER_ADMIN_ID = '8752946456';
+
+// Resolve Super Admin ID: 8752946456 is authoritative permanent owner
+const envAdminId = process.env.ADMIN_TELEGRAM_ID ? String(process.env.ADMIN_TELEGRAM_ID).trim() : '';
+const activeAdminId = (envAdminId && envAdminId !== '8838351233') ? envAdminId : PERMANENT_SUPER_ADMIN_ID;
+
 export const CONFIG = {
   BOT_TOKEN: process.env.BOT_TOKEN || '',
-  ADMIN_TELEGRAM_ID: process.env.ADMIN_TELEGRAM_ID ? String(process.env.ADMIN_TELEGRAM_ID).trim() : '',
+  ADMIN_TELEGRAM_ID: activeAdminId,
   BRAND_NAME: '𝐒𝐔𝐏𝐑𝐄𝐌𝐄 𝐇𝐄𝐑𝐄',
   BOT_NAME: 'SMM PANEL',
   CURRENCY: '₹',

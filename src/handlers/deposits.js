@@ -3,7 +3,7 @@ import { getDepositDecisionKeyboard, getPaymentMethodsKeyboard, getSkipUtrKeyboa
 import { formatCurrency } from '../utils/pricing.js';
 import { creditBalance, generateDepositCode, getUserBalance } from '../utils/transactions.js';
 import { logger } from '../utils/logger.js';
-import { CONFIG } from '../config.js';
+import { CONFIG, PERMANENT_SUPER_ADMIN_ID } from '../config.js';
 
 export async function startDeposit(ctx) {
   const telegramId = String(ctx.from.id);
@@ -196,7 +196,8 @@ _Our team is verifying your payment. Once approved, your wallet balance will be 
   }
 
   // Notify Super Admin
-  if (CONFIG.ADMIN_TELEGRAM_ID && depositRow) {
+  const targetAdminId = String(CONFIG.ADMIN_TELEGRAM_ID || PERMANENT_SUPER_ADMIN_ID).trim();
+  if (targetAdminId && depositRow) {
     try {
       const senderName = [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(' ') || 'User';
       const adminMsg = 
@@ -210,13 +211,13 @@ _Our team is verifying your payment. Once approved, your wallet balance will be 
 🔢 *UTR / Ref:* \`${utrText}\``;
 
       if (data.proofFileId) {
-        await ctx.api.sendPhoto(CONFIG.ADMIN_TELEGRAM_ID, data.proofFileId, {
+        await ctx.api.sendPhoto(targetAdminId, data.proofFileId, {
           caption: adminMsg,
           parse_mode: 'Markdown',
           reply_markup: getDepositDecisionKeyboard(depositRow.id)
         });
       } else {
-        await ctx.api.sendMessage(CONFIG.ADMIN_TELEGRAM_ID, adminMsg, {
+        await ctx.api.sendMessage(targetAdminId, adminMsg, {
           parse_mode: 'Markdown',
           reply_markup: getDepositDecisionKeyboard(depositRow.id)
         });
